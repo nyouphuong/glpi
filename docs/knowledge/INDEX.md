@@ -16,7 +16,7 @@ Format: `- [tiêu đề](file.md) — mồi nhử để biết có nên mở kh�
 - [Tùy biến phải nằm trong plugins/, route plugin bị tự thêm tiền tố](tuy-bien-bang-plugin-khong-sua-core.md) — đọc trước khi viết tính năng mới
 
 ## Tích hợp ngoài / hạ tầng
-- *(chưa có)*
+- [Bản chạy nằm ở WSL không phải D:\, và mô hình nhánh main/riêng](quy-trinh-hai-ban-repo-va-mo-hinh-nhanh.md) — đọc trước khi sửa file hay pull upstream
 
 ---
 
