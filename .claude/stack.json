@@ -1,0 +1,18 @@
+{
+  "_readme": "Cấu hình TIỆN ÍCH. AI ĐƯỢC sửa file này. Chính sách bảo mật ở .claude/policy.json.",
+  "_detected": "Node.js (npm) + PHP (composer)",
+  "commands": {
+    "install": "composer install && npm install",
+    "dev": "npm run watch",
+    "build": "npm run build",
+    "test": "vendor/bin/phpunit",
+    "testOne": "vendor/bin/phpunit --filter ",
+    "lint": "composer lint",
+    "format": "vendor/bin/php-cs-fixer fix",
+    "typecheck": "vendor/bin/phpstan analyse"
+  },
+  "notes": {
+    "_readme": "Ghi chú dự án mà AI cần biết nhưng không đáng nhét vào CLAUDE.md.",
+    "items": []
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "_readme": "CHÍNH SÁCH BẢO MẬT — chỉ người sửa, AI không sửa được (file này tự nằm trong protectedPaths).",
+  "protectedPaths": {
+    "_readme": "Đường dẫn AI KHÔNG được ghi/sửa/xoá. Hook chặn cứng ở PreToolUse, kể cả lách qua Bash.",
+    "paths": [
+      ".github/workflows/",
+      "LICENSE",
+      "install/migrations/",
+      ".claude/policy.json",
+      ".claude/settings.json",
+      ".claude/hooks/"
+    ],
+    "reason": "Vùng chỉ người được đổi: spec/contract đã chốt, migration đã chạy, hạ tầng, và chính cơ chế cưỡng chế."
+  },
+  "secretScan": {
+    "_readme": "Chặn ghi secret hardcode. Bỏ qua các đường dẫn hợp lệ chứa secret hoặc giá trị ví dụ.",
+    "enabled": true,
+    "skipPaths": [
+      ".env",
+      ".env.*",
+      "**/*.example",
+      "**/*.sample",
+      "**/*.lock",
+      ".claude/hooks/",
+      "tests/fixtures/"
+    ]
+  }
+}
