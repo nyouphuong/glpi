@@ -113,7 +113,7 @@ describe('Dashboard', () => {
         $('body').find('.grid-stack-item').first().hasClass('dirty');
     });
 
-    test('setWidgetFromForm default values', () => {
+    test('setWidgetFromForm default values', async () => {
         // Mock glpi_close_all_dialogs
         window.glpi_close_all_dialogs = jest.fn().mockImplementation(() => {});
 
@@ -126,7 +126,10 @@ describe('Dashboard', () => {
         });
 
         dashboard.addWidget = jest.fn().mockImplementation(() => {});
-        dashboard.setWidgetFromForm({
+        dashboard.getFiltersFromDB = jest.fn().mockImplementation(() => {
+            return {};
+        });
+        await dashboard.setWidgetFromForm({
             serializeArray: () => {
                 return [];
             }
@@ -153,7 +156,7 @@ describe('Dashboard', () => {
         expect(window.glpi_close_all_dialogs).toHaveBeenCalledTimes(1);
     });
 
-    test('setWidgetFromForm custom form values', () => {
+    test('setWidgetFromForm custom form values', async () => {
         // Mock glpi_close_all_dialogs
         window.glpi_close_all_dialogs = jest.fn().mockImplementation(() => {});
 
@@ -171,7 +174,7 @@ describe('Dashboard', () => {
                 '1': 'test',
             };
         });
-        dashboard.setWidgetFromForm({
+        await dashboard.setWidgetFromForm({
             serializeArray: () => {
                 return [
                     {name: 'color', value: '#ff00ff'},
@@ -216,11 +219,11 @@ describe('Dashboard', () => {
         expect(window.glpi_close_all_dialogs).toHaveBeenCalledTimes(1);
     });
 
-    test('setWidgetFromForm No Card', () => {
+    test('setWidgetFromForm No Card', async () => {
         window.glpi_close_all_dialogs = jest.fn().mockImplementation(() => {});
         const dashboard = new GLPIDashboard({'rand': '12345'});
         dashboard.addWidget = jest.fn().mockImplementation(() => {});
-        const result = dashboard.setWidgetFromForm({
+        const result = await dashboard.setWidgetFromForm({
             serializeArray: () => {
                 return [{name: 'card_id', value: '0'}];
             }
@@ -230,11 +233,11 @@ describe('Dashboard', () => {
         expect(window.glpi_close_all_dialogs).toHaveBeenCalledTimes(1);
     });
 
-    test('setWidgetFromForm Edit No Old ID', () => {
+    test('setWidgetFromForm Edit No Old ID', async () => {
         window.glpi_close_all_dialogs = jest.fn().mockImplementation(() => {});
         const dashboard = new GLPIDashboard({'rand': '12345'});
         dashboard.addWidget = jest.fn().mockImplementation(() => {});
-        const result = dashboard.setWidgetFromForm({
+        const result = await dashboard.setWidgetFromForm({
             serializeArray: () => {
                 return [{name: 'old_id', value: '0'}];
             }
@@ -244,12 +247,15 @@ describe('Dashboard', () => {
         expect(window.glpi_close_all_dialogs).toHaveBeenCalledTimes(1);
     });
 
-    test('setWidgetFromForm Edit Remove Old Card', () => {
+    test('setWidgetFromForm Edit Remove Old Card', async () => {
         window.glpi_close_all_dialogs = jest.fn().mockImplementation(() => {});
         const dashboard = new GLPIDashboard({'rand': '12345'});
         dashboard.addWidget = jest.fn().mockImplementation(() => {});
         dashboard.grid.removeWidget = jest.fn().mockImplementation(() => {});
-        dashboard.setWidgetFromForm({
+        dashboard.getFiltersFromDB = jest.fn().mockImplementation(() => {
+            return {};
+        });
+        await dashboard.setWidgetFromForm({
             serializeArray: () => {
                 return [
                     {name: 'color', value: '#ff00ff'},
@@ -269,11 +275,14 @@ describe('Dashboard', () => {
         expect(window.glpi_close_all_dialogs).toHaveBeenCalledTimes(1);
     });
 
-    test('setWidgetFromForm Encoded Card Options', () => {
+    test('setWidgetFromForm Encoded Card Options', async () => {
         window.glpi_close_all_dialogs = jest.fn().mockImplementation(() => {});
         const dashboard = new GLPIDashboard({'rand': '12345'});
         dashboard.addWidget = jest.fn().mockImplementation(() => {});
-        dashboard.setWidgetFromForm({
+        dashboard.getFiltersFromDB = jest.fn().mockImplementation(() => {
+            return {};
+        });
+        await dashboard.setWidgetFromForm({
             serializeArray: () => {
                 return [
                     {name: 'color', value: '#ff00ff'},
@@ -597,7 +606,7 @@ describe('Dashboard', () => {
         expect(window.AjaxMock.isResponseStackEmpty()).toBeTrue();
     });
 
-    test('saveFilter', () => {
+    test('saveFilter', async () => {
         const dashboard = new GLPIDashboard({'rand': '12345'});
         dashboard.filters_selector = '#filter-selector';
 
@@ -610,7 +619,7 @@ describe('Dashboard', () => {
         window.sortable = jest.fn().mockImplementation(() => {});
         dashboard.refreshCardsImpactedByFilter = jest.fn().mockImplementation(() => {});
 
-        dashboard.saveFilter('filter2', 'filter2_value');
+        await dashboard.saveFilter('filter2', 'filter2_value');
 
         expect(dashboard.getFiltersFromDB).toHaveBeenCalledTimes(1);
         expect(dashboard.setFiltersInDB).toHaveBeenCalledWith({
@@ -1077,7 +1086,7 @@ describe('Dashboard', () => {
         expect(new_option.is(':selected')).toBeTrue();
     });
 
-    test('getCardsAjax multi-mode all', () => {
+    test('getCardsAjax multi-mode all', async () => {
         const dashboard = new GLPIDashboard({'rand': '12345'});
         dashboard.ajax_cards = true;
         dashboard.getFiltersFromDB = jest.fn().mockImplementation(() => {
@@ -1093,8 +1102,8 @@ describe('Dashboard', () => {
         $.each(gridstack_items, (index, item) => {
             $(item).data('card-options', {});
         });
-        // When ajax_cards is true, getCardsAjax should return an array of promises
-        expect(Array.isArray(dashboard.getCardsAjax())).toBeTrue();
+        // When ajax_cards is true, getCardsAjax should resolve to an array of promises
+        expect(Array.isArray(await dashboard.getCardsAjax())).toBeTrue();
     });
 
     test('getCardsAjax multi-mode embed', async () => {
@@ -1156,7 +1165,7 @@ describe('Dashboard', () => {
         expect(window.AjaxMock.isResponseStackEmpty()).toBeTrue();
     });
 
-    test('getCardsAjax multi-mode single', () => {
+    test('getCardsAjax multi-mode single', async () => {
         const dashboard = new GLPIDashboard({'rand': '12345'});
         dashboard.ajax_cards = true;
         dashboard.getFiltersFromDB = jest.fn().mockImplementation(() => {
@@ -1172,8 +1181,8 @@ describe('Dashboard', () => {
         $.each(gridstack_items, (index, item) => {
             $(item).data('card-options', {});
         });
-        // When ajax_cards is true, getCardsAjax should return an array of promises
-        expect(Array.isArray(dashboard.getCardsAjax('[gs-id="2"]'))).toBeTrue();
+        // When ajax_cards is true, getCardsAjax should resolve to an array of promises
+        expect(Array.isArray(await dashboard.getCardsAjax('[gs-id="2"]'))).toBeTrue();
     });
 
     test('getCardsAjax multi-mode Error', async () => {
@@ -1372,7 +1381,7 @@ describe('Dashboard', () => {
         expect(window.sortable).toHaveBeenNthCalledWith(2, '.filters', 'disable');
     });
 
-    test('getFiltersFromDB', () => {
+    test('getFiltersFromDB', async () => {
         const dashboard = new GLPIDashboard({
             'rand': '12345',
             'current': 'current_dashboard',
@@ -1382,23 +1391,45 @@ describe('Dashboard', () => {
             action: 'get_filter_data',
             dashboard: 'current_dashboard',
         }, () => {
-            return JSON.stringify({
+            // AjaxMock trả thẳng giá trị của callback, không parse theo dataType,
+            // nên phải trả về đúng object mà caller cần thay vì chuỗi JSON.
+            return {
                 'filter1': 'value1',
                 'filter2': ['value2'],
                 'filter3': '',
-            });
+            };
         }));
 
-        // eslint-disable-next-line no-unused-vars
-        const result = dashboard.getFiltersFromDB();
-        //TODO filters returned are undefined. Maybe an issue with the mock AJAX handling and synchronous AJAX calls
-        //Maybe this can be made async
+        // Giờ gọi bất đồng bộ nên response của mock mới dùng được — đúng cái TODO cũ
+        // của upstream ghi là không làm được với XHR đồng bộ.
+        const result = await dashboard.getFiltersFromDB();
 
-        // expect(result).toEqual({
-        //     'filter1': 'value1',
-        //     'filter2': ['value2'],
-        //     'filter3': '',
-        // });
+        expect(result).toEqual({
+            'filter1': 'value1',
+            'filter2': ['value2'],
+            'filter3': '',
+        });
+        expect(window.AjaxMock.isResponseStackEmpty()).toBeTrue();
+    });
+
+    test('getFiltersFromDB is memoized', async () => {
+        const dashboard = new GLPIDashboard({
+            'rand': '12345',
+            'current': 'current_dashboard',
+        });
+        window.AjaxMock.start();
+        // Chỉ đăng ký 1 response: nếu memoize hỏng, lần gọi thứ 2 đi mạng và mock sẽ fail.
+        window.AjaxMock.addMockResponse(new window.AjaxMockResponse('//ajax/dashboard.php', 'GET', {
+            action: 'get_filter_data',
+            dashboard: 'current_dashboard',
+        }, () => {
+            return {'filter1': 'value1'};
+        }));
+
+        const first  = await dashboard.getFiltersFromDB();
+        const second = await dashboard.getFiltersFromDB();
+
+        expect(second).toEqual(first);
         expect(window.AjaxMock.isResponseStackEmpty()).toBeTrue();
     });
 
@@ -1686,7 +1717,7 @@ describe('Dashboard', () => {
         }));
     });
 
-    test('Click filter add button', () => {
+    test('Click filter add button', async () => {
         $('#dashboard-12345').append(`
             <div class="filters_toolbar">
                 <button class="add-filter"></button>
@@ -1706,6 +1737,9 @@ describe('Dashboard', () => {
         });
 
         $('#dashboard-12345 .filters_toolbar .add-filter').trigger('click');
+        // handler đã thành async từ khi getFiltersFromDB() trả Promise
+        await new Promise(process.nextTick);
+
         expect(window.glpi_ajax_dialog).toHaveBeenCalledWith(expect.toSatisfy((params) => {
             return params.url === '//ajax/dashboard.php' && params.params.action === 'display_add_filter'
                 && params.params.dashboard === 'current_dashboard' && params.params.used.includes('filter1')
@@ -1715,7 +1749,7 @@ describe('Dashboard', () => {
         expect(dashboard.getFiltersFromDB).toHaveBeenCalled();
     });
 
-    test('Click filter delete button', () => {
+    test('Click filter delete button', async () => {
         $('#dashboard-12345').append(`
             <div class="filters_toolbar">
                 <div class="filter" data-filter-id="filter1">
@@ -1737,6 +1771,9 @@ describe('Dashboard', () => {
         dashboard.refreshCardsImpactedByFilter = jest.fn().mockImplementation(() => {});
 
         $('#dashboard-12345 .filters_toolbar .filter .delete-filter').trigger('click');
+        // handler đã thành async từ khi getFiltersFromDB() trả Promise
+        await new Promise(process.nextTick);
+
         expect(dashboard.getFiltersFromDB).toHaveBeenCalled();
         expect(dashboard.setFiltersInDB).toHaveBeenCalledWith({
             filter2: 'value2',

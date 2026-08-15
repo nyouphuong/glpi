@@ -90,6 +90,11 @@ class GLPIDashboard {
         this.rand = null;
         this.interval = null;
         this.current_name = null;
+
+        // Promise đang/đã lấy filter của dashboard hiện tại.
+        // Memoize để 7 call site chỉ tốn 1 request, và để mọi caller thấy cùng một dữ liệu.
+        // Reset mỗi khi current_name đổi.
+        this._filters_promise = null;
         this.markdown_editors = [];
         this.all_cards = [];
         this.all_widgets = [];
@@ -200,6 +205,8 @@ class GLPIDashboard {
         $(`${this.elem_id} .toolbar .dashboard_select`).change((e) => {
             const dropdown = $(e.currentTarget);
             this.current_name = dropdown.val();
+            // Mỗi dashboard có bộ filter riêng -> huỷ cache khi đổi dashboard.
+            this._filters_promise = null;
             const selected_label = dropdown.find('option:selected').text();
             $(".dashboard-name").val(selected_label);
             this.refreshDashboard();
@@ -416,11 +423,11 @@ class GLPIDashboard {
                 },
                 modalclass: 'modal-lg',
             });
-        }).on("click", '.filters_toolbar .add-filter', () => {
+        }).on("click", '.filters_toolbar .add-filter', async () => {
             // add new filter
             glpi_close_all_dialogs();
 
-            const filters = this.getFiltersFromDB();
+            const filters = await this.getFiltersFromDB();
             const filter_names    = Object.keys(filters);
 
             glpi_ajax_dialog({
@@ -432,7 +439,7 @@ class GLPIDashboard {
                     used: filter_names
                 },
             });
-        }).on("click", '.filters_toolbar .delete-filter', (e) => {
+        }).on("click", '.filters_toolbar .delete-filter', async (e) => {
             // delete existing filter
             const filter = $(e.target).closest('.filter');
             const filter_id = filter.data('filter-id');
@@ -441,7 +448,7 @@ class GLPIDashboard {
             filter.remove();
 
             // remove filter from storage and refresh cards
-            const filters = this.getFiltersFromDB();
+            const filters = await this.getFiltersFromDB();
             delete filters[filter_id];
             this.setFiltersInDB(filters);
             this.refreshCardsImpactedByFilter(filter_id);
@@ -591,7 +598,7 @@ class GLPIDashboard {
      * @param {jQuery} form
      * @return {boolean}
      */
-    setWidgetFromForm(form) {
+    async setWidgetFromForm(form) {
         glpi_close_all_dialogs();
         const form_data  = {};
 
@@ -645,7 +652,7 @@ class GLPIDashboard {
 
         const args = form_data.card_options;
         args.force = true;
-        args.apply_filters = this.getFiltersFromDB();
+        args.apply_filters = await this.getFiltersFromDB();
 
         // add the new widget
         const widget = this.addWidget(form_data);
@@ -779,9 +786,9 @@ class GLPIDashboard {
         });
     }
 
-    saveFilter(filter_id, value) {
+    async saveFilter(filter_id, value) {
         // store current filter in localStorage
-        const filters = this.getFiltersFromDB();
+        const filters = await this.getFiltersFromDB();
         filters[filter_id] = value;
         this.setFiltersInDB(filters);
 
@@ -1139,10 +1146,10 @@ class GLPIDashboard {
             .trigger('change');
     }
 
-    getCardsAjax(specific_one) {
+    async getCardsAjax(specific_one) {
         specific_one = specific_one || "";
 
-        const filters = this.getFiltersFromDB();
+        const filters = await this.getFiltersFromDB();
         const force = (specific_one.length > 0 ? 1 : 0);
 
         const requested_cards = [];
@@ -1263,12 +1270,12 @@ class GLPIDashboard {
     /**
      * init filters of the dashboard
      */
-    initFilters() {
+    async initFilters() {
         if ($(this.filters_selector).length === 0) {
             return;
         }
 
-        const filters = this.getFiltersFromDB();
+        const filters = await this.getFiltersFromDB();
 
         // replace empty array by empty string to avoid jquery remove the corresponding key
         // when sending ajax query
@@ -1296,10 +1303,10 @@ class GLPIDashboard {
             sortable(this.filters_selector, {
                 placeholderClass: 'filter-placeholder',
                 orientation: 'horizontal',
-            })[0].addEventListener('sortupdate', (e) => {
+            })[0].addEventListener('sortupdate', async (e) => {
                 // after drag, save the order of filters in storage
                 const items_after = $(e.detail.destination.items).filter(this.filters_selector);
-                const filters     = this.getFiltersFromDB();
+                const filters     = await this.getFiltersFromDB();
                 const new_filters = {};
                 $.each(items_after, (ia) => {
                     const filter_id = $(ia).data('filter-id');
@@ -1319,24 +1326,27 @@ class GLPIDashboard {
         if (this.embed) {
             // Embed dashboards are displayed inside an anonymous context,
             // there is actually no stored filter data to fetch.
-            return [];
+            return Promise.resolve([]);
         }
 
-        let filters;
-        $.ajax({
-            method: 'GET',
-            url: CFG_GLPI.root_doc+"/ajax/dashboard.php",
-            async: false,
-            data: {
-                action:    'get_filter_data',
-                dashboard: this.current_name,
-            },
-            success: function(response) {
-                filters = response;
-            }
-        });
+        // Request bất đồng bộ + memoize. Trước đây dùng XHR đồng bộ: nó chặn main thread
+        // (đã bị deprecated, xem https://xhr.spec.whatwg.org/) và bị gọi lại ở cả 7 call site.
+        // Filter chỉ đổi qua setFiltersInDB(), hàm đó tự cập nhật cache nên không cần hỏi lại server.
+        if (this._filters_promise === null) {
+            this._filters_promise = Promise.resolve(
+                $.ajax({
+                    method: 'GET',
+                    url: CFG_GLPI.root_doc+"/ajax/dashboard.php",
+                    dataType: 'json',
+                    data: {
+                        action:    'get_filter_data',
+                        dashboard: this.current_name,
+                    },
+                })
+            ).then((response) => response || {}, () => ({}));
+        }
 
-        return filters || {};
+        return this._filters_promise;
     }
 
     /**
@@ -1349,6 +1359,10 @@ class GLPIDashboard {
         if (this.current_name.length > 0) {
             filters[this.current_name] = sub_filters;
         }
+
+        // Đồng bộ cache của getFiltersFromDB() mà không phải gọi lại server.
+        this._filters_promise = Promise.resolve(sub_filters || {});
+
         $.ajax({
             method: 'POST',
             url: CFG_GLPI.root_doc+"/ajax/dashboard.php",
