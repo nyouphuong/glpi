@@ -17,6 +17,7 @@ Format: `- [tiêu đề](file.md) — mồi nhử để biết có nên mở kh�
 
 ## Tích hợp ngoài / hạ tầng
 - [Bản chạy nằm ở WSL không phải D:\, và mô hình nhánh main/riêng](quy-trinh-hai-ban-repo-va-mo-hinh-nhanh.md) — đọc trước khi sửa file hay pull upstream
+- [DB nằm trong Docker volume, backup phải gồm 3 phần](backup-va-noi-luu-du-lieu.md) — lệnh dump/restore đã verify, và cách mất sạch DB
 
 ---
 
