@@ -61,10 +61,46 @@ http://localhost:8080/front/smtp_oauth2_callback.php          <- thu tren may
 https://glpi.<vung-noi-bo>/front/smtp_oauth2_callback.php     <- chay that
 ```
 
-**Không cần mở firewall ra internet.** Luồng OAuth chạy qua trình duyệt của người uỷ quyền
-(trình duyệt → Microsoft → trình duyệt → GLPI nội bộ). Microsoft **không bao giờ tự gọi vào**
-máy chủ GLPI. Địa chỉ nội bộ hoàn toàn ổn, miễn người bấm uỷ quyền đang ở trong mạng công ty.
-Đây là câu trả lời sẵn cho IT khi họ hỏi "có phải mở firewall không".
+**Chiều mạng: KHÔNG cần inbound, NHƯNG BẮT BUỘC outbound.**
+
+| Chiều | Cần không | Vì sao |
+|---|---|---|
+| Internet → máy chủ GLPI | **Không** | Luồng OAuth chạy qua trình duyệt người uỷ quyền, Microsoft không bao giờ tự gọi vào |
+| Máy chủ GLPI → `login.microsoftonline.com` | **BẮT BUỘC** | Đổi mã lấy token, và làm mới token định kỳ — server gọi thẳng, không qua trình duyệt |
+| Máy chủ GLPI → `smtp.office365.com:587` | **BẮT BUỘC** | Gửi thư |
+
+Câu "không cần mở firewall" chỉ đúng cho **chiều vào**. Chiều ra là bắt buộc, đừng nói nhầm với IT.
+
+**Cạm bẫy proxy giải mã TLS.** Đo trên môi trường hiện tại:
+
+```
+smtp.office365.com:587            -> MO
+https://outlook.office365.com     -> 301, OK
+https://login.microsoftonline.com -> FAIL
+    curl: (60) SSL certificate problem: self-signed certificate in certificate chain
+    voi -k (bo qua kiem tra) -> 302   <= duong mang THONG
+```
+
+Đường mạng thông; proxy công ty giải mã TLS rồi ký lại bằng **CA nội bộ mà container không tin**.
+Hệ quả: token exchange sẽ fail ngay khi bấm uỷ quyền, dù client id/secret đúng hết.
+
+Cách vá — nạp CA gốc của công ty vào container:
+
+```yaml
+# docker-compose.override.yaml
+services:
+  app:
+    volumes:
+      - ./corp-root-ca.crt:/usr/local/share/ca-certificates/corp-root-ca.crt:ro
+```
+
+```bash
+docker compose exec --user=root app update-ca-certificates
+docker compose exec app curl -sS -o /dev/null https://login.microsoftonline.com && echo OK
+```
+
+Xin IT file CA gốc (.crt/.pem). Cùng cái CA này cũng vá luôn mấy thứ khác từng bị chặn:
+tải binary Cypress và `docker pull` từ `ghcr.io`.
 
 Cấu hình phía GLPI (*Cài đặt → Thông báo → Cấu hình gửi email*): chế độ **SMTP+OAuth**,
 provider **Azure**, host `smtp.office365.com`, port `587`, điền Client ID / Secret /
@@ -123,14 +159,22 @@ Gửi bằng hàng đợi, không chặn thao tác người dùng — cron `queu
 (`mailgate` mỗi 10 phút là chiều ngược lại: đọc mail đến để tạo phiếu, cần thêm quyền **đọc**
 hộp thư chứ không chỉ quyền gửi.)
 
-**Trạng thái hiện tại**
+**Trạng thái hiện tại — đã chuẩn bị sẵn phía GLPI**
 
 ```
-notifications_mailing = 0     <- dang TAT
-smtp_mode             = 0     <- MAIL_MAIL, chua cau hinh
-smtp_oauth_provider   = (rong)
-glpi_useremails       = 0 dong  <- CAI BAY, xem duoi
+url_base              = http://localhost:8080   (da sua, truoc do thieu cong)
+notifications_mailing = 1                        BAT
+smtp_mode             = 4                        MAIL_SMTPOAUTH
+smtp_host             = smtp.office365.com
+smtp_port             = 587
+smtp_oauth_provider   = Glpi\Mail\SMTP\OauthProvider\Azure
+from_email            = glpi-noreply@alphatheta.com
+glpi_useremails       = 9 dia chi                 (da vao, het bay)
 ```
+
+Còn thiếu đúng ba giá trị từ Microsoft: **client id · client secret · tenant id**.
+Cắm vào là bấm uỷ quyền được — với điều kiện đã nạp CA công ty (xem trên).
+Khi lên máy chủ thật nhớ sửa lại `url_base` cho khớp tên nội bộ.
 
 **Cạm bẫy `glpi_useremails = 0`:** chưa người dùng nào có địa chỉ email. Cấu hình SMTP xong,
 gửi thử thành công, mà **vẫn không ai nhận được gì** — rất dễ tưởng SMTP hỏng. Email vào hệ
@@ -156,11 +200,3 @@ docker exec glpi-db sh -c 'mariadb -uroot -pglpi glpi -N -e \
 ```
 
 Sau khi cấu hình xong, gửi thử từ trang *Cấu hình gửi email* rồi kiểm tra `files/_log/mail*.log`.
-
-**Ghi thêm — đăng nhập bằng SSO thì KHÁC chuyện này**
-
-Đừng nhầm hai việc. Phần trên là **gửi mail** bằng OAuth. Còn **đăng nhập vào GLPI bằng SSO**
-(kiểu Microsoft Entra ID) thì bản này **không hỗ trợ sẵn**: quét mã nguồn ra 0 file OIDC,
-0 file SAML; chỉ có `AuthLDAP` (đấu AD kiểu cũ), `AuthMail`, CAS, và cơ chế *external auth*
-qua HTTP header. Muốn SSO thật thì phải đặt reverse proxy xác thực phía trước.
-Mấy bảng `glpi_oauth*` trong DB là GLPI **làm chủ** OAuth cho API của nó, không phải chiều ngược lại.
