@@ -12,8 +12,17 @@ GLPI 11 có sẵn provider **Azure** cho SMTP OAuth (`src/Glpi/Mail/SMTP/OauthPr
 không cần plugin. Chế độ gửi mail khai bằng hằng số `MAIL_SMTPOAUTH = 4`
 (`src/autoload/constants.php`), bên cạnh `MAIL_SMTP`, `MAIL_SMTPSSL`, `MAIL_SMTPTLS`.
 
-**Đừng dùng basic auth (user + mật khẩu).** Microsoft đã ngừng hỗ trợ trên Exchange Online.
-Cấu hình được thì cũng sẽ chết khi Microsoft siết tiếp.
+**Đừng dùng basic auth (user + mật khẩu) khi gửi tới Microsoft 365.** Microsoft đã khai tử
+xác thực bằng mật khẩu trên Exchange Online.
+
+Phân biệt cho rõ, hai chuyện hay bị gộp làm một:
+
+| Gửi tới đâu | SMTP + mật khẩu | Ghi chú |
+|---|---|---|
+| `smtp.office365.com` (Microsoft 365) | **Đã bỏ** | Bắt buộc OAuth |
+| Relay nội bộ của công ty | **Vẫn dùng được** | Không phải máy Microsoft nên chính sách đó không áp dụng; relay thường lọc theo IP, không cần mật khẩu |
+
+Tức "SMTP với mật khẩu bị bỏ" chỉ đúng với Microsoft 365. Giao thức SMTP không bị bỏ.
 
 Ba thứ phải xin IT (thiếu một là tắc):
 
@@ -32,6 +41,30 @@ Can admin consent
 ```
 
 Redirect URI lấy từ `OauthConfig.php:136`, phải khớp **từng ký tự** với ô trong Azure.
+GLPI tự ghép nó từ cấu hình `url_base`, nên `url_base` phải đúng trước khi uỷ quyền.
+
+**Phải có TÊN MIỀN NỘI BỘ trước — nhưng không phải mua gì.** Công ty dùng IP nội bộ, không có
+tên miền công cộng, vẫn làm được:
+
+- Entra ID **bắt buộc HTTPS** cho redirect URI, chỉ nới cho `localhost`. IP thuần rất có thể
+  bị từ chối — đừng đặt cược kế hoạch vào đó.
+- Công ty đã chạy AD thì **đã có sẵn vùng DNS nội bộ**. Chỉ cần xin **một bản ghi A**:
+  `glpi.<vùng-nội-bộ>` → `192.168.x.x`. Miễn phí, IT thêm một dòng.
+- Chứng chỉ HTTPS xin từ **CA nội bộ** (AD Certificate Services). Máy trong domain tin sẵn,
+  không hiện cảnh báo. CA công cộng không cấp cho tên nội bộ hay IP riêng được.
+
+**Mẹo tiết kiệm một vòng thủ tục:** app registration cho khai **nhiều redirect URI cùng lúc**.
+Xin một lần, khai cả hai:
+
+```
+http://localhost:8080/front/smtp_oauth2_callback.php          <- thu tren may
+https://glpi.<vung-noi-bo>/front/smtp_oauth2_callback.php     <- chay that
+```
+
+**Không cần mở firewall ra internet.** Luồng OAuth chạy qua trình duyệt của người uỷ quyền
+(trình duyệt → Microsoft → trình duyệt → GLPI nội bộ). Microsoft **không bao giờ tự gọi vào**
+máy chủ GLPI. Địa chỉ nội bộ hoàn toàn ổn, miễn người bấm uỷ quyền đang ở trong mạng công ty.
+Đây là câu trả lời sẵn cho IT khi họ hỏi "có phải mở firewall không".
 
 Cấu hình phía GLPI (*Cài đặt → Thông báo → Cấu hình gửi email*): chế độ **SMTP+OAuth**,
 provider **Azure**, host `smtp.office365.com`, port `587`, điền Client ID / Secret /
@@ -57,15 +90,52 @@ Ba cái bẫy, cái nào cũng làm mất hàng giờ mà thông báo lỗi khô
 Thêm: **refresh token lưu trong DB, mã hoá bằng `config/glpicrypt.key`**. Mất khoá đó thì
 phải uỷ quyền lại từ đầu — xem [note sao lưu](backup-va-noi-luu-du-lieu.md).
 
+**OAuth KHÔNG thay thế SMTP — nó chỉ thay ô mật khẩu**
+
+Hay bị hiểu nhầm là phải cấu hình hai thứ. Thật ra `smtp_mode` chỉ nhận **một** giá trị:
+
+```
+MAIL_MAIL      = 0   ham mail() cua PHP, khong qua SMTP
+MAIL_SMTP      = 1   SMTP + mat khau
+MAIL_SMTPSSL   = 2   SMTP + mat khau, ma hoa SSL
+MAIL_SMTPTLS   = 3   SMTP + mat khau, ma hoa TLS
+MAIL_SMTPOAUTH = 4   SMTP + OAuth        <- chon cai nay cho M365
+```
+
+Bốn dòng dưới đều là SMTP, chỉ khác cách mã hoá và cách xác thực. `host`, `port`, địa chỉ
+người gửi **giữ nguyên** ở mọi chế độ — đó là *gửi tới đâu*, không liên quan xác thực.
+
+**Người nhận email: không có danh sách nào để duy trì**
+
+GLPI không lưu danh sách gửi. Nó lưu **vai trò**, tra ra người thật lúc gửi:
+
+| Bảng | Số dòng (bản sạch) | Là gì |
+|---|---|---|
+| `glpi_notifications` | 82 | Sự kiện cài sẵn: phiếu mới, được giao, cần duyệt, sắp trễ… |
+| `glpi_notificationtargets` | 189 | **Ai nhận** — khai theo vai trò, không theo địa chỉ |
+| `glpi_notificationtemplates` | 32 | Mẫu nội dung |
+| `glpi_queuednotifications` | 0 | Hàng đợi chờ gửi |
+
+Vai trò kiểu *người yêu cầu · nhóm phụ trách · người phê duyệt · người theo dõi*. Nhân viên
+vào/ra, đổi phòng ban thì danh sách người nhận **tự đúng**, không phải sửa cấu hình.
+
+Gửi bằng hàng đợi, không chặn thao tác người dùng — cron `queuednotification` chạy mỗi 60 giây.
+(`mailgate` mỗi 10 phút là chiều ngược lại: đọc mail đến để tạo phiếu, cần thêm quyền **đọc**
+hộp thư chứ không chỉ quyền gửi.)
+
 **Trạng thái hiện tại**
 
 ```
 notifications_mailing = 0     <- dang TAT
 smtp_mode             = 0     <- MAIL_MAIL, chua cau hinh
 smtp_oauth_provider   = (rong)
+glpi_useremails       = 0 dong  <- CAI BAY, xem duoi
 ```
 
-Chưa cấu hình gì. Bật thông báo cùng trang cấu hình SMTP.
+**Cạm bẫy `glpi_useremails = 0`:** chưa người dùng nào có địa chỉ email. Cấu hình SMTP xong,
+gửi thử thành công, mà **vẫn không ai nhận được gì** — rất dễ tưởng SMTP hỏng. Email vào hệ
+thống bằng hai đường: nhập tay từng người (hợp lúc thí điểm), hoặc **đồng bộ từ AD** (AD đã có
+sẵn email mọi nhân viên). Đây là lý do thứ hai để đấu AD, ngoài chuyện đăng nhập.
 
 **Đường tạm nếu xin lâu**
 
